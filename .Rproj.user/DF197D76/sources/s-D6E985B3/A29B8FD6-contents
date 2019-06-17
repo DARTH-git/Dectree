@@ -1,0 +1,15 @@
+rm(list=ls())
+#install.packages("igraph")
+library(lazyeval)
+library(dectree)
+
+
+# load the edges of the tree with their attributes
+branches <- read.csv("typeBranches.csv")
+# branches <- read.csv("branches.csv")
+
+# graph  <- graph_from_edgelist(as.matrix(branches[, c("from","to")]))
+
+tree     <- create_tree(branches)
+fit.tree <- estimate_tree(tree,   payoffs = c("cost","effect"))
+plot_tree(tree)

@@ -1,0 +1,378 @@
+    #####################################################################
+
+    # NIPT COST-EFFECTIVENESS ANALYSIS USING LAZYEVAL (TEST)
+
+    #####################################################################
+
+    #install.packages(c("lazyeval", "igraph", "ggraph"))
+    #install.packages("igraph")
+    # install.packages("htmlTable")
+    rm(list = ls())
+    library(lazyeval)
+    library(dectree)
+
+    setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) # set the working directory
+
+    #### 01 Input: Tree Structure & Model Parameters ####
+
+    #####################################################################
+
+    # load the edges of the tree (with their attributes)
+
+    branches <- read.csv("branches_NIPT_TREE2_12032018.csv")
+    n        <- nrow(branches)
+    l        <- length(grep("^LB|^IUFD|^IM|^TOP",branches[,2])) # count number of leafs = number of unique paths in tree
+
+
+    # vectors with age categories & aneuploidies
+
+    age.cat  <- c("<20| ","20-25|","25-30|","30-35|","35-40|","40-45|",">45|") # age categories
+    hs       <- c("T21","T18","T13","IF1","IF2","IF3") # healthy status (aneuploidies)
+    hs.h     <- append(hs,"healthy") # health status (aneuploidies & healthy)
+
+    # set values
+
+    N    <- 180000  # population
+    a    <- length(age.cat)  # number of age categories within population
+    h1   <- length(hs)  # number of health statuses (T21,T18,T13,healthy,...)
+    h2   <- length(hs.h)  # number of health statuses (T21,T18,T13,healthy,...)
+    s    <- a * h2  # number of subgroups to analyse
+
+
+    # age distribution population
+                                         #Age dist
+    age      <-    as.data.frame(matrix(c(0.0060,   # <20
+                                          0.0690,   # 20-25
+                                          0.2779,   # 25-30
+                                          0.3979,   # 30-35
+                                          0.2055,   # 35-40
+                                          0.0409,   # 40-45
+                                          0.0028),  # >45
+                                 nrow = a, ncol = 1, byrow = TRUE,
+                                  dimnames = list(age.cat,"age distr")))
+
+    # birth outcomes distribution
+
+                                         #T21,       T18,       T13        IF1,       IF2,      IF3,
+    pop       <-   as.data.frame(matrix(c(0.0011,    0.0004,    0.0001,    0.0001,    0.0001,    0.0001,      # <20
+                                          0.0013,    0.0004,    0.0001,    0.0001,    0.0001,    0.0001,      # 20-25
+                                          0.0019,    0.0005,    0.0001,    0.0001,    0.0001,    0.0001,      # 25-30
+                                          0.0045,    0.0007,    0.0002,    0.0001,    0.0001,    0.0001,      # 30-35
+                                          0.0155,    0.0017,    0.0005,    0.0001,    0.0001,    0.0001,      # 35-40
+                                          0.0615,    0.0064,     0.002,    0.0001,    0.0001,    0.0001,      # 40-45
+                                          0.0615,    0.0064,     0.002,    0.0001,    0.0001,    0.0001),     # >45
+                                  nrow = a, ncol = h1, byrow = TRUE,
+                                   dimnames = list(age.cat,hs)))
+
+
+
+    # define subgroups
+
+    AG               <- age * N  # create row AgeGroup (AG) with number of individuals within each age category
+    HSAG             <- pop*t(AG)  # create matrix HealthyStatusAgeGroup (HSAG) with number of individuals within each health status per age category
+    HSAG[,"Healthy"] <- AG - rowSums(HSAG[,])  # calculate healthy fetuses in each age category
+    vec              <- matrix(t(as.matrix(HSAG)),nrow=1) # create vector with all outcomes
+    HSAG["Total",]   <- colSums(HSAG)  # calculate number of fetuses for each health outcome
+
+
+    # test participation (per age group)
+
+                                        #1st NIPT,        2nd NIPT|1st fail, IT|1st fail,      IT|2nd fail
+    part.NIPT  <- as.data.frame(matrix(c(0.42,            0.90,              0.05,             1.00,          # <20
+                                         0.42,            0.90,              0.05,             1.00,          # 20-25
+                                         0.42,            0.90,              0.05,             1.00,          # 25-30
+                                         0.42,            0.90,              0.05,             1.00,          # 30-35
+                                         0.42,            0.90,              0.09,             1.00,          # 35-40
+                                         0.42,            0.90,              0.09,             1.00,          # 40-45
+                                         0.42,            0.90,              0.09,             1.00),         # >45
+
+                                nrow = a, ncol = 4, byrow = TRUE,
+                                dimnames = list(age.cat, c("1st NIPT","2nd NIPT | 1st fail","IT | 1st fail","IT | 2nd fail"))))
+
+
+                                        #part ultrasound
+    part.scan <-  as.data.frame(matrix(c(0.91,             # <20
+                                         0.91,             # 20-25
+                                         0.91,             # 25-30
+                                         0.91,             # 30-35
+                                         0.91,             # 35-40
+                                         0.91,             # 40-45
+                                         0.91),            # >45
+                               nrow = a, ncol = 1, byrow = TRUE,
+                                dimnames = list(age.cat,c("participation ultrasound"))))
+
+    p.ITUA    <- 0.90   # participation invasive test in case of ultrasound anomalies
+    p.ITNIPT  <- 1.00   # participation invasive test in case of abnormal test result NIPT
+
+
+    # success rate NIPT
+
+    p.NIPT1succ  <- 0.99      # success rate first attempt NIPT
+    p.NIPT2succ  <- 0.66      # success rate second attempt NIPT
+
+
+    # sensitivity NIPT
+                                         #NIPT sens
+    p.sens.NIPT <- as.data.frame(matrix(c(0.97,    # T21 (Down syndrome)
+                                          1.00,     # T18 (Edwards syndrome)
+                                          0.52,     # T13 (Patau syndrome)
+                                          0.8,      # IF1 (numerical deviations)
+                                          0.7,      # IF2 (structural deviations)
+                                          0.6,      # IF3 (complex/chaotic profiles)
+                                          0.01),    # Healthy (false positive)
+                                 nrow = h2, ncol = 1, byrow = TRUE,
+                                 dimnames = list(hs.h, c("test sensitivity NIPT"))))
+
+    # sensitivity 20 weeks ultrasound
+                                         #US sens
+    p.sens.scan <- as.data.frame(matrix(c(0.24,    # T21 (Down syndrome)
+                                          0.50,    # T18 (Edwards syndrome)
+                                          0.60,    # T13 (Patau syndrome)
+                                          0.70,    # IF1 (numerical deviations)
+                                          0.80,    # IF2 (structural deviations)
+                                          0.01,    # IF3 (complex/chaotic profiles)
+                                          0.018),   # Healthy (false positive)
+                                 nrow = h2, ncol = 1, byrow = TRUE,
+                                 dimnames = list(hs.h, c("test sensitivity ultrasound"))))
+
+
+
+    # proportion of pregnancies terminated in case of anomaly
+    # in case of ultrasound anomalies
+
+    p.TOPUA <- 0.45
+
+    # in case of diagnosed anomaly (by invasive test)
+                                     #TOP
+    p.TOP   <- as.data.frame(matrix(c(0.92,    # T21 (Down syndrome)
+                                      0.98,    # T18 (Edwards syndrome)
+                                      0.98,    # T13 (Patau syndrome)
+                                      0.99,    # IF1 (numerical deviations)
+                                      0.99,    # IF2 (structural deviations)
+                                      0.01,    # IF3 (complex/chaotic profiles)
+                                      0.00),   # healthy
+                             nrow = h2, ncol = 1, byrow = TRUE,
+                             dimnames = list(hs.h, c("proportion of preg terminated"))))
+
+
+    # risk of intra-uterine fetal demise
+                                      #IUFD
+    p.IUFD   <- as.data.frame(matrix(c(0.25,    # T21 (Down syndrome)
+                                       0.80,    # T18 (Edwards syndrome)
+                                       0.90,    # T13 (Patau syndrome)
+                                       0.80,    # IF1 (numerical deviations)
+                                       0.90,    # IF2 (strutural deviations)
+                                       0.10,    # IF3 (complex/chaotic profiles)
+                                       0.005),  # healthy
+                                    nrow = h2, ncol = 1, byrow = TRUE,
+                                    dimnames = list(hs.h, c("IUFD risk"))))
+
+
+    # risk of iatrogenic miscarriage
+                                    #IM
+    p.IM   <- as.data.frame(matrix(c(0.0036,    # T21 (Down syndrome)
+                                     0.0036,    # T18 (Edwards syndrome)
+                                     0.0036,    # T13 (Patau syndrome)
+                                     0.0036,    # IF1 (numerical deviations)
+                                     0.0036,    # IF2 (strutural deviations)
+                                     0.0036,    # IF3 (complex/chaotic profiles)
+                                     0.001),    # healthy
+                                     nrow = h2, ncol = 1, byrow = TRUE,
+                                     dimnames = list(hs.h, c("Iatrogenic miscarriage risk"))))
+
+
+    # Cost (and utility) inputs
+
+    # c.NIPT   <- 775.84      # cost of nipt
+    # c.scan   <- 158.91      # cost of 20 weeks (second trimester) anomaly scan
+    # c.GUO    <- 544.00      # cost of advanced anomaly scan
+    # c.IT     <- 951.27      # cost of invasive diagnostic testing
+    # c.array  <- 775.82      # cost of array analysis
+
+
+    #### 02 Define probs costs (and effects) per subgroup ####
+
+    #####################################################################
+
+    # initialize probability vector
+
+    probs            <- as.data.frame(matrix(0, nrow = n, ncol = s))   # empty column with nrow equal to nrow in branches and ncol equal to the number of subgroups to be analysed
+    cnames           <- paste0(rep(age.cat, each = h2), hs.h)
+    colnames(probs)  <- cnames
+
+    # GROUP1 (constant over all subgroups)
+    probs[grep(       "^NIPT1F", branches[,2]), ]  <-  1 - p.NIPT1succ  # failure rate first NIPT
+    probs[grep(       "^NIPT1S", branches[,2]), ]  <-      p.NIPT1succ  # success rate first NIPT
+    probs[grep(       "^NIPT2F", branches[,2]), ]  <-  1 - p.NIPT2succ  # failure rate second NIPT
+    probs[grep(       "^NIPT2S", branches[,2]), ]  <-      p.NIPT2succ  # success rate second NIPT
+    probs[grep("^no ITNIPT1pos", branches[,2]), ]  <-  1 - p.ITNIPT     # refuse invasive test in case of abnormal test result first NIPT
+    probs[grep(   "^ITNIPT1pos", branches[,2]), ]  <-      p.ITNIPT     # accept invasive test in case of abnormal test result first NIPT
+    probs[grep("^no ITNIPT2pos", branches[,2]), ]  <-  1 - p.ITNIPT     # refuse invasive test in case of abnormal test result second NIPT
+    probs[grep(   "^ITNIPT2pos", branches[,2]), ]  <-      p.ITNIPT     # accept invasive test in case of abnormal test result second NIPT
+    probs[grep(       "^contUA", branches[,2]), ]  <-  1 - p.TOPUA      # prop of preg continued in case of utlrasound anomalies
+    probs[grep(        "^TOPUA", branches[,2]), ]  <-      p.TOPUA      # prop of preg term in case of utlrasound anomalies
+    probs[grep(       "^no IT ", branches[,2]), ]  <-  1 - p.ITUA       # refuse invasive test in case of ultrasound anomalies
+    probs[grep(          "^IT ", branches[,2]), ]  <-      p.ITUA       # accept invasive test in case of ultrasound anomalies
+
+
+    # GROUP2 (variable over age categories)
+    # !!! DOES NOT WORK WHEN grep(" ... " , branches[,2]) > 1 ...
+    # probs[grep("^no NIPT1", branches[,2]), ]   <-  1 - rep(part.NIPT[,1], each = a)  # refuse NIPT
+    # probs[grep("^NIPT1A"  , branches[,2]), ]   <-      rep(part.NIPT[,1], each = a)  # accept NIPT
+    # probs[grep("^no NIPT2", branches[,2]), ]   <-  1 - rep(part.NIPT[,2], each = a) - rep(part.NIPT[,3],each = p) # no second first trimester test after first NIPT failed
+    # probs[grep("^ITNIPT1F", branches[,2]), ]   <-      rep(part.NIPT[,3], each = a)  # invasive test after after first NIPT failed
+    # probs[grep("^NIPT2A"  , branches[,2]), ]   <-      rep(part.NIPT[,2], each = a)  # NIPT repeated after after first NIPT failed
+    # probs[grep("^ITNIPT2F", branches[,2]), ]   <-      rep(part.NIPT[,4], each = a)  # participation invasive test after NIPT failed 2 times
+    # probs[grep("^no scan" , branches[,2]), ]   <-  1 - rep(part.scan[,1], each = a) # refuse scan
+    # probs[grep("^scan"    , branches[,2]), ]   <-      rep(part.scan[,1], each = a)  # accept scan
+
+    counter2  <- 0
+
+
+    for(j in 1:a){ # p -> age categories
+
+      counter2 <- counter2 + a
+
+      probs[grep("^no NIPT1", branches[,2]),(counter2-h2+1):counter2]   <-     1 - part.NIPT[j,1]                   # refuse NIPT
+      probs[grep("^NIPT1A",   branches[,2]),(counter2-h2+1):counter2]   <-         part.NIPT[j,1]                   # accept NIPT
+      probs[grep("^no NIPT2", branches[,2]),(counter2-h2+1):counter2]   <-    (1 - part.NIPT[j,2] - part.NIPT[j,3]) # no second first trimester test after first NIPT failed
+      probs[grep("^ITNIPT1F", branches[,2]),(counter2-h2+1):counter2]   <-         part.NIPT[j,3]                   # invasive test after after first NIPT failed
+      probs[grep("^NIPT2A",   branches[,2]),(counter2-h2+1):counter2]   <-         part.NIPT[j,2]                   # NIPT repeated after after first NIPT failed
+      probs[grep("^ITNIPT2F", branches[,2]),(counter2-h2+1):counter2]   <-         part.NIPT[j,4]                   # participation invasive test after NIPT failed 2 times
+      probs[grep("^no scan",  branches[,2]),(counter2-h2+1):counter2]   <-     1 - part.scan[j,1]                   # refuse scan
+      probs[grep("^scan",     branches[,2]),(counter2-h2+1):counter2]   <-         part.scan[j,1]                   # accept scan
+
+    }
+
+
+
+    # GROUP3 (variable over health statuses)
+    # !!! DOES NOT WORK WHEN grep(" ... " , branches[,2]) > 1 ...
+    # probs[grep("^LB", branches[,2]), ]   <-  1 - rep(p.IUFD[,1], times = a)
+
+    counter1  <- 0
+    int <- seq(from = 1, to = s, by = h2)
+
+      for(i in 1:h2){ # h2 -> health statuses
+
+
+         probs[grep("^NIPT1neg", branches[,2]),int+counter1]    <-  1 - p.sens.NIPT[i,1]  # no abnormal test result NIPT (false negative)
+         probs[grep("^NIPT1pos", branches[,2]),int+counter1]    <-      p.sens.NIPT[i,1]  # abnormal test result NIPT (concordant/true positive)
+         probs[grep("^NIPT2neg", branches[,2]),int+counter1]    <-  1 - p.sens.NIPT[i,1]  # no abnormal test result NIPT (false negative)
+         probs[grep("^NIPT2pos", branches[,2]),int+counter1]    <-      p.sens.NIPT[i,1]  # abnormal test result NIPT (concordant/true positive)
+         probs[grep("^LB"      , branches[,2]),int+counter1]    <-  1 - p.IUFD[i,1]       # prob of life birth in case of T21
+         probs[grep("^IUFD"    , branches[,2]),int+counter1]    <-      p.IUFD[i,1]       # risk of intra-uterine fetal demise in case of T21
+         probs[grep("^contIT"  , branches[,2]),int+counter1]    <-  1 - p.TOP[i,1]        # prop of preg continued in case of T21
+         probs[grep("^TOPIT"   , branches[,2]),int+counter1]    <-      p.TOP[i,1]        # prop of preg term in case of T21
+         probs[grep("^no UA"   , branches[,2]),int+counter1]    <-  1 - p.sens.scan[i,1]  # no abnormal test result scan (false negative)
+         probs[grep("^UA"      , branches[,2]),int+counter1]    <-      p.sens.scan[i,1]  # abnormal test result scan (true positive)
+         probs[grep("^no compl", branches[,2]),int+counter1]    <-  1 - p.IM[i,1]         # prob of no complications during invasive test
+         probs[grep("^IM"      , branches[,2]),int+counter1]    <-      p.IM[i,1]         # risk of iatrogenic miscarriage
+
+         counter1 <- counter1 + 1
+
+        }
+
+
+
+
+
+    #### 04 Perform analysis ####
+
+    #####################################################################
+
+
+    # create trees en fit trees
+    branches1 <- lapply(X = 1:s,       FUN = function(X) cbind(branches[,1:2],probs[,X],branches[,4:5]))   # create branch per subgroup with corresponding probs, costs and effects
+    branches1 <- lapply(X = branches1, FUN = function(X) {colnames(X)[3] <- c("probability"); X})          # set column name of 3th column to probability and name of 4th column to cost
+    trees     <- lapply(X = branches1, FUN = function(X) create_tree(X))    # create tree for every subgroup and set attributes
+    fit.trees <- lapply(X = trees,     FUN = function(X) estimate_tree(X, payoffs = c("cost", "effect")))  # fit tree for every subgroup
+
+    # substract path probabilities and costs (effects)
+    PP = sapply(X = 1:s, FUN = function(X) cbind(fit.trees[[X]]$weights)) # Matrix PP [k x f] with path probabilities for each subgroup (f = # unique paths, k = # subgroups)
+    # TC = sapply(X = 1:s, FUN = function(X) cbind(fit.trees[[X]]$pay[,1])) # Matrix TC [k x f] with total cost for each path in the tree for each subgroup (k = # unique paths, f = # subgroups)
+    # TE = sapply(X = 1:k, FUN = function(X) cbind(fit.trees[[X]]$pay[,2]))
+
+    colnames(PP)  <- cnames
+    # colnames(TC)  <- cnames
+
+    plot_tree(trees[[1]], edge.label.display = "probability",
+              font.size = 2,
+              vertex.size = 4)
+
+
+
+    #### 05 Substract output ####
+
+    #####################################################################
+
+    agecatrep   <- rep(age.cat, each = h2)
+    hsrep       <- rep(hs.h, times = a)
+
+    outcome = as.data.frame(PP * t(replicate(102,vec[1,])))  # multiply path probabilities with # pregnant women in corresponding subgroup
+    outcome = as.data.frame(rbind(agecatrep,hsrep, outcome),stringsAsFactors=FALSE)
+    outcome = as.data.frame(cbind(append(as.character(branches[c(grep("LB|IUFD|IM|TOP", branches[,"outcome1"])),"outcome1"]),c("-","-"),after = 0),outcome),stringsAsFactors=FALSE)
+    outcome = as.data.frame(cbind(append(as.character(branches[c(grep("notest|missed|suspected|diagnosed", branches[,"outcome2"])),"outcome2"]),c("-","-"),after = 0),outcome),stringsAsFactors=FALSE)
+
+
+    #### 06 Create output tables ####
+
+    #####################################################################
+
+    # creat sub-matrices for different outcomes
+    notest    <- as.data.frame(rbind(outcome[1:2,],outcome[c(grep(   "notest", outcome[,1])),]),stringsAsFactors=FALSE)
+    missed    <- as.data.frame(rbind(outcome[1:2,],outcome[c(grep(   "missed", outcome[,1])),]),stringsAsFactors=FALSE)
+    suspected <- as.data.frame(rbind(outcome[1:2,],outcome[c(grep("suspected", outcome[,1])),]),stringsAsFactors=FALSE)
+    diagnosed <- as.data.frame(rbind(outcome[1:2,],outcome[c(grep("diagnosed", outcome[,1])),]),stringsAsFactors=FALSE)
+
+    IM        <- as.data.frame(rbind(outcome[1:2,],outcome[c(grep(  "IM", outcome[,2])),]),stringsAsFactors=FALSE)
+    TOP       <- as.data.frame(rbind(outcome[1:2,],outcome[c(grep( "TOP", outcome[,2])),]),stringsAsFactors=FALSE)
+    IUFD      <- as.data.frame(rbind(outcome[1:2,],outcome[c(grep("IUFD", outcome[,2])),]),stringsAsFactors=FALSE)
+    LB        <- as.data.frame(rbind(outcome[1:2,],outcome[c(grep(  "LB", outcome[,2])),]),stringsAsFactors=FALSE)
+
+    outputTable = as.data.frame(HSAG["Total",])
+    # notest = apply(X = 1:p, FUN = function(X) sum(as.numeric(as.matrix(notest[-1:-2, grep(hs.h[X],notest[2,])]))))
+
+    for(i in 1:a){
+
+      outputTable[   "notest", i] = sum(as.numeric(as.matrix(   notest[-1:-2, grep(hs.h[i],    notest[2,])])))
+      outputTable[   "missed", i] = sum(as.numeric(as.matrix(   missed[-1:-2, grep(hs.h[i],    missed[2,])])))
+      outputTable["suspected", i] = sum(as.numeric(as.matrix(suspected[-1:-2, grep(hs.h[i], suspected[2,])])))
+      outputTable["diagnosed", i] = sum(as.numeric(as.matrix(diagnosed[-1:-2, grep(hs.h[i], diagnosed[2,])])))
+      outputTable[       "IM", i] = sum(as.numeric(as.matrix(       IM[-1:-2, grep(hs.h[i],        IM[2,])])))
+      outputTable[      "TOP", i] = sum(as.numeric(as.matrix(      TOP[-1:-2, grep(hs.h[i],       TOP[2,])])))
+      outputTable[     "IUFD", i] = sum(as.numeric(as.matrix(     IUFD[-1:-2, grep(hs.h[i],      IUFD[2,])])))
+      outputTable[       "LB", i] = sum(as.numeric(as.matrix(       LB[-1:-2, grep(hs.h[i],        LB[2,])])))
+
+    }
+
+    outputTable = round(outputTable[,],0)
+    outputTable$Healthy[2:5] = "-"
+    dimnames(outputTable) = list(c("Total","no test","missed","suspected","diagnosed","IM","TOP","IUFD","LB"), hs.h)
+
+
+    # html table
+     library(htmlTable)
+
+    options(table_counter = TRUE)
+    htmlTable(outputTable,
+              header =c("T21", "T18","T13", "IF1","IF2", "IF3","Healthy"),
+              rnames = c("Total","no test","missed","suspected","diagnosed","IM","TOP","IUFD/stillbirth","Live birth"),
+              rgroup = c("Total","Test effectiveness","Pregnancy outcome"),
+              n.rgroup = c(1,4,4),
+              #align = "lllllll",
+              #align.header = "llllll",
+              #align.cgroup = c("ll","ll","ll"),
+              cgroup = rbind(c("NIPT as primary screening test",NA),c("Abnormality","No abnormality")),
+              n.cgroup = rbind(c(7,NA),c(6,1)),
+              caption="Outcomes for prenatal screening and diagnosis with the NIPT",
+              tfoot="&dagger; Rounded values")
+
+
+
+    #### 07 Plot decision tree ####
+
+    #####################################################################
+
+
+
