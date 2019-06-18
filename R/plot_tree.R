@@ -142,8 +142,7 @@ plot_tree <- function(tree,
 
   # add the flipped edge arrows, hide the actual line
   plot <- plot + geom_edge_elbow(
-    aes(direction = 0, colour = color.end, y = y - 0.5),
-    start_cap = rectangle(10, 0.1999, 'native', 'native'),
+    aes(direction = 0, colour = color.end, y = yend + 0.01, x = xend),
     arrow = edge_arrows,
     edge_width = 0,
     show.legend = FALSE
