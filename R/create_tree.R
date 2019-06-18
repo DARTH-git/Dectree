@@ -1,8 +1,8 @@
 # dependencies
-library(igraph)
-library(ggplot2)
-library(ggraph)
-library(stringr)
+if (!require(igraph)) install.packages('igraph'); library(igraph)
+if (!require(ggplot2)) install.packages('ggplot2'); library(ggplot2)
+if (!require(ggraph)) install.packages('ggraph'); library(ggraph)
+if (!require(stringr)) install.packages('stringr'); library(stringr)
 
 # vertex types, package-wide constants
 ROOT <- 0
