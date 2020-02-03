@@ -47,13 +47,26 @@ plot_tree <- function(tree,
   layout <- create_layout(tree,'dendrogram')
   data <- get_edges("short")(layout)
 
-  # using the layout's edge ordering, get a list of edges with all attributes
-  edge_data <- E(tree, P = c(rbind(data[, "node1.ggraph.orig_index"],
-                                    data[, "node2.ggraph.orig_index"])))
+  # check for original index column, may have different name in different R versions
+  if("node1.ggraph.orig_index" %in% colnames(data)){
+
+    # using the layout's edge ordering, get a list of edges with all attributes
+    edge_data <- E(tree, P = c(rbind(data[, "node1.ggraph.orig_index"],
+                                     data[, "node2.ggraph.orig_index"])))
+  } else {
+
+    # using the layout's edge ordering, get a list of edges with all attributes
+    edge_data <- E(tree, P = c(rbind(data[, "node1..ggraph.orig_index"],
+                                     data[, "node2..ggraph.orig_index"])))
+  }
+
+  # don't show probability-1 edges
+  prob_labels <- ifelse(edge_data$probability != 1, edge_data$probability, "")
+
 
   # if edge.label.display is "all"or "both", show all edge labels
   if(edge.label.display %in% c("all", "both")){
-    edge_labels <- paste(edge_data$name, edge_data$probability, sep = "\n")
+    edge_labels <- paste(edge_data$name, prob_labels, sep = "\n")
 
   # if edge.label.display is "label", show only edge labels
   } else if(edge.label.display == "label"){
@@ -61,7 +74,7 @@ plot_tree <- function(tree,
 
   # if edge.label.display is "probability", show only edge probabilities
   } else if(edge.label.display == "probability"){
-    edge_labels <- paste(edge_data$probability, "", sep = "\n")
+    edge_labels <- paste(prob_labels, "", sep = "\n")
 
   # if edge.label.display is "none", don't show edge labels
   } else if(edge.label.display == "none"){
@@ -142,7 +155,8 @@ plot_tree <- function(tree,
 
   # add the flipped edge arrows, hide the actual line
   plot <- plot + geom_edge_elbow(
-    aes(direction = 0, colour = color.end, y = yend + 0.01, x = xend),
+    aes(direction = 0, colour = color.end, x=xend, y = y - 0.5),
+    # start_cap = rectangle(10, 0.1999, 'native', 'native'),
     arrow = edge_arrows,
     edge_width = 0,
     show.legend = FALSE

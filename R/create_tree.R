@@ -42,6 +42,9 @@ create_tree<- function (edgelist){
     stop("Missing probability property!")
   }
 
+  # if some probabilities weren't provided, set them to 1
+  edgelist$probability[which(is.na(edgelist$probability))] <- 1
+
   # create an igraph object
   graph  <- graph_from_edgelist(as.matrix(edgelist[, c("from","to")]))
 
@@ -90,8 +93,8 @@ create_tree<- function (edgelist){
   for (i in colnames(edgelist)) {
 
     # unless they are one of the special names
-    if (!i %in% c("from", "to", "name", "type", "outcome")) {
-      graph <- set_edge_attr(graph, i, value = edgelist[, i])
+    if (!i %in% c("from", "to", "name", "type")) {
+      graph <- set_edge_attr(graph, i, value = ifelse(is.na(edgelist[, i]), 0, edgelist[, i]))
     }
   }
 
