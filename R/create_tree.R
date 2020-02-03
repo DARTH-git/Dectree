@@ -1,8 +1,6 @@
 # dependencies
-library(igraph)
-library(ggplot2)
-library(ggraph)
-library(stringr)
+if (!require('pacman')) install.packages('pacman'); library(pacman) #
+p_load("ggplot2", "igraph", "ggraph", "stringr")
 
 # vertex types, package-wide constants
 ROOT <- 0
