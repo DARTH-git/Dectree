@@ -11,7 +11,7 @@
 #'
 #' @export
 
-estimate_tree1 <- function(tree, payoffs = NULL) {
+estimate_tree <- function(tree, payoffs = NULL) {
   # get root and terminal nodes
   root_node      <- V(tree)[V(tree)$type == ROOT]
   terminal_nodes <- V(tree)[V(tree)$type == END]
